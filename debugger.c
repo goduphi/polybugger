@@ -1,11 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include <string.h>
+#include <stdint.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/ptrace.h>
+#include <sys/user.h>
+
+#include "polybugger.h"
 
 int main(int argc, char *argv[])
 {
@@ -24,7 +27,6 @@ int main(int argc, char *argv[])
 	
 	if(pid == 0)
 	{
-		printf("Starting debug session...\n");
 		long ptraceResult = ptrace(PTRACE_TRACEME, 0, NULL, NULL);
 		if(ptraceResult == -1)
 		{
@@ -41,12 +43,41 @@ int main(int argc, char *argv[])
 	}
 	else
 	{
+		printf("Starting debug session...\n");
 		int status;
+
+		// This call to waitpid makes sure that the tracer waits until the
+		// child process stops on its first instruction as specified by
+		// PTRACE_TRACEME
+		waitpid(pid, &status, 0);
+		
+		printf("Child is now at 0x%08lx\n", getCurrentInstructionPointer(pid));
+		
+		uint64_t bpAddr = 0x00000000004000d4;
+		breakPoint* bp = createBreakPoint(pid, (void*)bpAddr);
+		printf("Created breakpoint\n");
+		ptrace(PTRACE_CONT, pid, 0, 0);
 		waitpid(pid, &status, 0);
 
-		int data[8];
-		ptrace(PTRACE_PEEKDATA, pid, 0, data);
-		printf("%d\n", data[0]);
+		while(true)
+		{
+			printf("Process stopped at 0x%16lx\n", getCurrentInstructionPointer(pid));
+			traceeStatus ts = resumeFromBreakPoint(pid, bp);
+
+			if(ts == ERROR)
+				break;
+			else if(ts == EXITED)
+			{
+				printf("Child exited\n");
+				break;
+			}
+			else if(ts == STOPPED)
+				continue;
+		}
+
+		deleteBreakPoint(bp);
 	}
+
+		
 	return EXIT_SUCCESS;
 }
