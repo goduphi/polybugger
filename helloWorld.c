@@ -1,15 +1,15 @@
 #include <stdio.h>
 
-
 void do_stuff()
 {
-    printf("Hello, ");
+	printf("Hello, ");
 }
-
 
 int main()
 {
-    printf("world!\n");
-    return 0;
+	for(int i = 0; i < 4; i++)
+		do_stuff();
+	printf("world!\n");
+	return 0;
 }
 

@@ -9,6 +9,10 @@
 
 #include "polybugger.h"
 
+/*
+ * Use rip instead of the eip register due to the machine being x86 64
+ */
+
 long getCurrentInstructionPointer(pid_t pid)
 {
 	struct user_regs_struct r;
@@ -27,6 +31,7 @@ static void enableBreakPoint(pid_t pid, breakPoint* bp)
 static void disableBreakPoint(pid_t pid, breakPoint* bp)
 {
 	long instruction = ptrace(PTRACE_PEEKTEXT, pid, bp->address, 0);
+	// Check if there was a breakpoint to begin with
 	assert((instruction & 0xFF) == 0xCC);
 	ptrace(PTRACE_POKEDATA, pid, bp->address, (instruction & ~0xFF) | (bp->data & 0xFF));
 }
@@ -52,6 +57,8 @@ traceeStatus resumeFromBreakPoint(pid_t pid, breakPoint* bp)
 	// Get the current instruction pointer and check if the
 	// child stopped at the expected address
 	ptrace(PTRACE_GETREGS, pid, 0, &r);
+	// The instruction counter always points to the next instruction
+	// to be executed
 	assert(r.rip == (long)bp->address + 1);
 
 	// Rewind the instruction pointer back by 1 and do a PTRACE_SINGLESTEP
@@ -85,7 +92,6 @@ traceeStatus resumeFromBreakPoint(pid_t pid, breakPoint* bp)
 		return EXITED;
 	else if(WIFSTOPPED(status))
 		return STOPPED;
-	
 	
 	return ERROR;
 }

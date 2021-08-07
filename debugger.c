@@ -2,21 +2,32 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/ptrace.h>
 #include <sys/user.h>
+#include <fcntl.h>
 
 #include "polybugger.h"
 
-int main(int argc, char *argv[])
+#define MAX_USER_INPUT_CHARS	80
+
+void checkCommandLineArguments(int argc, char* argv[])
 {
 	if(argc < 2)
 	{
 		printf("Format error: %s <Executable>\n", argv[0]);
 		exit(EXIT_FAILURE);
 	}
+}
+
+int main(int argc, char *argv[])
+{
+	checkCommandLineArguments(argc, argv);	
+
+	// These variables are for the parsing the DWARF format inside of elf
 
 	pid_t pid = fork();
 	if(pid == -1)
@@ -52,32 +63,47 @@ int main(int argc, char *argv[])
 		waitpid(pid, &status, 0);
 		
 		printf("Child is now at 0x%08lx\n", getCurrentInstructionPointer(pid));
-		
-		uint64_t bpAddr = 0x00000000004000d4;
+	
+		// Use objdump -d executable to find out the address for the breakpoint	
+		uint64_t bpAddr = 0x4000f2;
 		breakPoint* bp = createBreakPoint(pid, (void*)bpAddr);
-		printf("Created breakpoint\n");
+		printf("Created breakpoint at 0x%12lx\n", bpAddr);
+		// Continue to the next break point
 		ptrace(PTRACE_CONT, pid, 0, 0);
 		waitpid(pid, &status, 0);
+	
+		char userInput[MAX_USER_INPUT_CHARS + 1];
+		memset(userInput, 0, sizeof(userInput));
 
 		while(true)
 		{
-			printf("Process stopped at 0x%16lx\n", getCurrentInstructionPointer(pid));
-			traceeStatus ts = resumeFromBreakPoint(pid, bp);
+			printf("Process stopped at 0x%12lx\n", getCurrentInstructionPointer(pid));
 
-			if(ts == ERROR)
-				break;
-			else if(ts == EXITED)
+			if(WIFSTOPPED(status))
 			{
-				printf("Child exited\n");
+				printf("> ");
+				scanf("%s", userInput);
+
+				if(strncmp(userInput, "c", 1) == 0 && strlen(userInput) == 1)
+				{	
+					if(ptrace(PTRACE_SINGLESTEP, pid, 0, 0) < 0)
+					{
+						perror("ptrace() error");
+						exit(EXIT_FAILURE);
+					}
+					waitpid(pid, &status, 0);
+				}
+			}
+			
+			if(WIFEXITED(status))
+			{
+				printf("Child exited.\n");
 				break;
 			}
-			else if(ts == STOPPED)
-				continue;
 		}
 
 		deleteBreakPoint(bp);
 	}
 
-		
 	return EXIT_SUCCESS;
 }
