@@ -13,6 +13,15 @@
 #include "polybugger.h"
 
 #define MAX_USER_INPUT_CHARS	80
+#define COMMAND_NUMBER		4
+#define MAX_COMMAND_SIZE	11
+
+typedef enum
+{
+	BREAK, CONTINUE, STEP, READ
+} currentCommand;
+
+char commands[][MAX_COMMAND_SIZE] = { "break", "continue", "step", "read" };
 
 void checkCommandLineArguments(int argc, char* argv[])
 {
@@ -21,6 +30,43 @@ void checkCommandLineArguments(int argc, char* argv[])
 		printf("Format error: %s <Executable>\n", argv[0]);
 		exit(EXIT_FAILURE);
 	}
+}
+
+bool isValidCommand(const char* command, currentCommand* c)
+{
+	for(uint8_t i = 0; i < COMMAND_NUMBER; i++)
+	{
+		if(strncmp(command, commands[i], strlen(commands[i])) == 0 &&
+		   strlen(commands[i]) == strlen(command))
+		{
+			*c = (currentCommand)i;
+			return true;
+		}
+	}
+	return false;
+}
+
+uint64_t getAddress(char input[], currentCommand* c)
+{
+	if(strlen(input) == 0)
+		return false;
+	input[strlen(input) - 1] = '\0';
+	char* token = strtok(input, " ");
+	if(!isValidCommand(token, c))
+		return 0x0;
+	if((token = strtok(NULL, " ")) == NULL)
+		return 0x0; 
+	return strtol(token, NULL, 16);
+}
+
+void continueToBreakPoint(pid_t pid, int* status)
+{
+	if(ptrace(PTRACE_CONT, pid, 0, 0) < 0)
+	{
+		perror("ptrace() error");
+		exit(EXIT_FAILURE);
+	}
+	waitpid(pid, status, 0);
 }
 
 int main(int argc, char *argv[])
@@ -61,43 +107,51 @@ int main(int argc, char *argv[])
 		// child process stops on its first instruction as specified by
 		// PTRACE_TRACEME
 		waitpid(pid, &status, 0);
-		
-		printf("Child is now at 0x%08lx\n", getCurrentInstructionPointer(pid));
-	
-		// Use objdump -d executable to find out the address for the breakpoint	
-		uint64_t bpAddr = 0x4000f2;
-		breakPoint* bp = createBreakPoint(pid, (void*)bpAddr);
-		printf("Created breakpoint at 0x%12lx\n", bpAddr);
-		// Continue to the next break point
-		ptrace(PTRACE_CONT, pid, 0, 0);
-		waitpid(pid, &status, 0);
-	
-		char userInput[MAX_USER_INPUT_CHARS + 1];
-		memset(userInput, 0, sizeof(userInput));
 
+		char userInput[MAX_USER_INPUT_CHARS + 1];
+		currentCommand c;
+		breakPoint* bp;
+		
 		while(true)
 		{
-			printf("Process stopped at 0x%12lx\n", getCurrentInstructionPointer(pid));
+			printf("Program/Instruction counter [%lx]\n>> ", getCurrentInstructionPointer(pid));
+			fgets(userInput, MAX_USER_INPUT_CHARS + 1, stdin);
+			uint64_t address = getAddress(userInput, &c);
 
-			if(WIFSTOPPED(status))
+			switch(c)
 			{
-				printf("> ");
-				scanf("%s", userInput);
-
-				if(strncmp(userInput, "c", 1) == 0 && strlen(userInput) == 1)
-				{	
-					if(ptrace(PTRACE_SINGLESTEP, pid, 0, 0) < 0)
-					{
-						perror("ptrace() error");
-						exit(EXIT_FAILURE);
-					}
-					waitpid(pid, &status, 0);
+			case BREAK:
+				printf("Creating breakpoint at 0x%lx\n", address);
+				bp = createBreakPoint(pid, (void*)address);
+				printf("Break point created at 0x%lx\n", address);
+				break;
+			case CONTINUE:
+				continueToBreakPoint(pid, &status);
+				break;
+			case STEP:
+				if(!WIFSTOPPED(status))
+					break;
+				if(ptrace(PTRACE_SINGLESTEP, pid, 0, 0) < 0)
+				{
+					perror("ptrace() error");
 				}
+				waitpid(pid, &status, 0);				
+				break;
+			case READ:
+				{
+				long data;
+				if((data = ptrace(PTRACE_PEEKTEXT, pid, address, 0)) < 0)
+				{
+					perror("ptrace() error at read");
+				}
+				printf("Data at 0x%lx is %lx\n", address, data);	
+				}
+				break;
 			}
-			
+
 			if(WIFEXITED(status))
 			{
-				printf("Child exited.\n");
+				printf("Child exited\n");
 				break;
 			}
 		}
