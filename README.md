@@ -9,8 +9,20 @@ Liz Rice: https://medium.com/@lizrice/a-debugger-from-scratch-part-1-7f55417bc85
 - On Linux: ```make```
 
 ### Usage
-- `./debugger.e <assembly file name>`
+- `objdump -d helloWorldAsm`
+- `./debugger.e helloWorldAsm`
 
+### Commands
+- break <Address> - Sets a break point at the specified address.
+- step - Executes a line of assembly code.
+- continue - Continues to the next breakpoint, or completes execution of program if breakpoint not present.
+- read <Address> - Reads the value at the address specified.
+
+### Special Instructions
+Since this debugger is primitive, you are required to use the machine code you get from running objdump.
+There should be a label called <_start> after you execute objdump. Ignore <message> and <message2>.
+All the address listed under <_start> are the ones you can use to set breakpoints and read memory. To
+step through code, you can just execute the step command.
 
 ### Note
-This debugger can only step through code for now and can only debug assembly code.  
+This debugger can only debug assembly code.  
