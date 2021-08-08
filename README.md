@@ -1,5 +1,5 @@
 # Polybugger
-A custom debugger program for C and C++ programs based on GDB.
+The goal of this project is to create a functional debugger which can debug C and C++ programs. For now, it is only limited to debugging x86 assembly code.
 
 ### Resources
 Eli Bendersky: https://github.com/eliben/code-for-blog/tree/master/2011/debuggers_part2_code  
