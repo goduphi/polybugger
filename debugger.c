@@ -8,17 +8,17 @@
 #include <sys/wait.h>
 #include <sys/ptrace.h>
 #include <sys/user.h>
-#include <fcntl.h>
 
 #include "polybugger.h"
 
-#define MAX_USER_INPUT_CHARS	80
+#define MAX_USER_INPUT_CHARS	64
 #define COMMAND_NUMBER		4
-#define MAX_COMMAND_SIZE	11
+#define MAX_COMMAND_SIZE	16
+#define MAX_BREAKPOINTS		4
 
 typedef enum
 {
-	BREAK, CONTINUE, STEP, READ
+	BREAK, CONTINUE, STEP, READ, INVALID_COMMAND
 } currentCommand;
 
 char commands[][MAX_COMMAND_SIZE] = { "break", "continue", "step", "read" };
@@ -53,20 +53,22 @@ uint64_t getAddress(char input[], currentCommand* c)
 	input[strlen(input) - 1] = '\0';
 	char* token = strtok(input, " ");
 	if(!isValidCommand(token, c))
+	{
+		*c = INVALID_COMMAND;
 		return 0x0;
+	}
 	if((token = strtok(NULL, " ")) == NULL)
-		return 0x0; 
+	{
+		return 0x0;
+	}
 	return strtol(token, NULL, 16);
 }
 
-void continueToBreakPoint(pid_t pid, int* status)
+bool slashN(const char* input)
 {
-	if(ptrace(PTRACE_CONT, pid, 0, 0) < 0)
-	{
-		perror("ptrace() error");
-		exit(EXIT_FAILURE);
-	}
-	waitpid(pid, status, 0);
+	if(strncmp(input, "\n", 1) == 0 && strlen(input) == 1)
+		return true;
+	return false;
 }
 
 int main(int argc, char *argv[])
@@ -74,6 +76,7 @@ int main(int argc, char *argv[])
 	checkCommandLineArguments(argc, argv);	
 
 	// These variables are for the parsing the DWARF format inside of elf
+	// Dwarf parsing needs to be implemented
 
 	pid_t pid = fork();
 	if(pid == -1)
@@ -110,30 +113,35 @@ int main(int argc, char *argv[])
 
 		char userInput[MAX_USER_INPUT_CHARS + 1];
 		currentCommand c;
-		breakPoint* bp;
+
+		breakPoint* bp[MAX_BREAKPOINTS];
+		uint8_t breakPointCounter = 0;
 		
 		while(true)
 		{
 			printf("Program/Instruction counter [%lx]\n>> ", getCurrentInstructionPointer(pid));
 			fgets(userInput, MAX_USER_INPUT_CHARS + 1, stdin);
+	
+			if(slashN(userInput))
+				continue;
+
 			uint64_t address = getAddress(userInput, &c);
 
 			switch(c)
 			{
 			case BREAK:
 				printf("Creating breakpoint at 0x%lx\n", address);
-				bp = createBreakPoint(pid, (void*)address);
+				bp[breakPointCounter++] = createBreakPoint(pid, (void*)address);
 				printf("Break point created at 0x%lx\n", address);
 				break;
 			case CONTINUE:
 				continueToBreakPoint(pid, &status);
 				break;
 			case STEP:
-				if(!WIFSTOPPED(status))
-					break;
 				if(ptrace(PTRACE_SINGLESTEP, pid, 0, 0) < 0)
 				{
-					perror("ptrace() error");
+					perror("ptrace() error at step");
+					break;
 				}
 				waitpid(pid, &status, 0);				
 				break;
@@ -143,9 +151,13 @@ int main(int argc, char *argv[])
 				if((data = ptrace(PTRACE_PEEKTEXT, pid, address, 0)) < 0)
 				{
 					perror("ptrace() error at read");
+					break;
 				}
 				printf("Data at 0x%lx is %lx\n", address, data);	
 				}
+				break;
+			case INVALID_COMMAND:
+				printf("Bruh, the command is not valid\n");
 				break;
 			}
 
@@ -155,8 +167,8 @@ int main(int argc, char *argv[])
 				break;
 			}
 		}
-
-		deleteBreakPoint(bp);
+		
+		freeBreakPoints(bp, breakPointCounter);
 	}
 
 	return EXIT_SUCCESS;
