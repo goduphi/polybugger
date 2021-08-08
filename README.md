@@ -21,8 +21,8 @@ Liz Rice: https://medium.com/@lizrice/a-debugger-from-scratch-part-1-7f55417bc85
 - read <Address> - Reads the value at the address specified.
 
 ### Special Instructions
-Since this debugger is primitive, you are required to use the machine code you get from running objdump.
-There should be a label called <_start> after you execute objdump. Ignore <message> and <message2>.
+Since this debugger is primitive, you are required to use the machine code you get from running objdump -d on helloWorldAsm.
+There should be a label called <_start> after you execute objdump. Ignore the <_message> and <_message2> labels.
 All the address listed under <_start> are the ones you can use to set breakpoints and read memory. To
 step through code, you can just execute the step command.
 
