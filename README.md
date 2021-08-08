@@ -1,5 +1,7 @@
 # Polybugger
 The goal of this project is to create a functional debugger which can debug C and C++ programs. For now, it is only limited to debugging x86 assembly code.
+The debugger makes use of the ptrace() system call in Linux to trace the execution of programs that are being debugged. The project still requires parsing of
+the DWARF format which will be implemented in a later version of the debugger.
 
 ### Resources
 Eli Bendersky: https://github.com/eliben/code-for-blog/tree/master/2011/debuggers_part2_code  
